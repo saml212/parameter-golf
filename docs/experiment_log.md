@@ -388,6 +388,11 @@ Improvement over baseline: 0.118 nats (need 0.005).
 
 Mean matches original PR #114 result exactly (1.1574). Environment reproduces faithfully.
 
+### Phase 3: Technique Experiments
+| Run ID | Sliding BPB | Steps | ms/step | Size | Config Diff | Takeaway |
+|--------|------------|-------|---------|------|-------------|----------|
+| ortho_wd02 | **1.1536** | 7,328 | 81.9 | 15.41MB | +OrthoInit +MuonWD=0.02 | **+0.0038 improvement, zero throughput cost, smaller artifact (WD regularizes)** |
+
 ### Total Experiments This Competition: ~62
 ### Total H100-hours: ~31 hours across 1xH100 and 8xH100 pods
 ### Competition Position: Behind PR #162 (1.1483), our best is 1.1557

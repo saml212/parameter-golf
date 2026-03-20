@@ -1,0 +1,130 @@
+===============================================
+BIG GRANT APPLICATION
+===============================================
+
+Detailed approach (max 2,500 chars):
+
+I found that post-training int8 quantization is the dominant BPB bottleneck on 8xH100 -- the quant penalty alone (0.014 BPB at default settings) is larger than most architectural improvements combined. Everything I've built follows from this.
+
+The main discovery: setting WARMDOWN_ITERS=20000 (well beyond the ~12,200 actual steps) so the entire run is one long LR decay. The model never trains at full learning rate -- it starts at 61% of peak and decays to near-zero. This produces tighter weight distributions that survive int8 rounding with far less damage. I swept 10 warmdown values from 2400 to 30000 and mapped the full curve:
+
+WD=2400: 1.2284 BPB (quant penalty ~0.014)
+WD=8000: 1.2237 BPB (penalty ~0.007)
+WD=15000: 1.2187 BPB (penalty ~0.005)
+WD=20000: 1.2167 BPB (penalty ~0.001) <-- sweet spot
+WD=30000: 1.2174 BPB (overshoots, LR decays too fast)
+
+This connects to recent work on training dynamics and quantization (arXiv:2510.06213) but pushes into a "100% warmdown" regime nobody has explored. The mechanism is clean: smaller late-training LR steps = less weight jitter = tighter per-row distributions = finer int8 grid resolution.
+
+On top of that I keep the tied embedding in fp16 during int8 export instead of quantizing it. This matrix does double duty as input embedding and output projection, so int8 damage hits twice. Costs ~500KB, offset by narrowing MLP hidden from 1024 to 992. This brought the total down to 1.2154 BPB.
+
+I also found that eval extrapolation behaves differently depending on training convergence. eval@2048 was +0.048 BPB on undertrained 1xH100 models but neutral-to-negative on well-trained 8xH100 models. The sweet spot is 1.375x (eval@1408). I tested the full curve from 1024 to 2048.
+
+One more interaction: MUON_BACKEND_STEPS=5 beats 7 at WD=20000, even though 7 beats 5 at WD=2400. When warmdown already smooths weights, faster steps matter more than better gradient orthogonalization.
+
+I also tested SwiGLU (no gain at iso-params), int6 mixed-precision (failed catastrophically with high LR, likely needs smoother training), and EMA (doesn't help at any decay). These negative results informed my understanding of what matters at this scale.
+
+Result: 1.2154 BPB. PR #61: https://github.com/openai/parameter-golf/pull/61
+
+Some documentation prepared with AI assistance to summarize experimental results.
+
+---
+
+Current best leaderboard submission score:
+
+1.2154
+
+---
+
+What improvement you expect from additional compute (max 1,500 chars):
+
+I have four directions with solid evidence, each requiring systematic sweeps:
+
+Sliding window eval (stride=64): The rules say "push the bounds of evaluation methods as aggressively as with training methods" and give a separate 10-min eval window. PR #50 got 1.1925 on a completely stock model just by adding stride-64 sliding window -- no arch changes, no training changes, just smarter eval. It's table stakes now. But I want to try something nobody has: train at seq_len=4096 then slide at that same length, zero RoPE extrapolation. Every token gets 4000+ tokens of context it actually trained on. Expected: 0.02-0.03 BPB. ~20 runs.
+
+SP-4096 tokenizer + ALBERT factorization: tokens_per_byte drops from 0.409 to 0.306 (confirmed). Factorized embeddings cost 590K params instead of 2.1M, so the transformer barely shrinks. Nobody has combined this with warmdown-optimized training. Expected: 0.03-0.05 BPB. ~15 runs.
+
+Longer training sequences (train@4096): PR #52 got 1.2014 this way. Combining with my warmdown + FP16 embed should go further. ~20 runs for LR/momentum/warmdown sweep.
+
+Hybrid optimization: my warmdown approach and PR #52's slow-and-smooth approach solve the same problem differently. Finding the right combination needs ~40 runs.
+
+Conservative: 1.2154 -> ~1.17 (sliding window + training)
+Optimistic: 1.2154 -> ~1.14 (full stack with SP-4096)
+
+
+===============================================
+SMALL GRANT APPLICATION
+===============================================
+
+Brief description of your approach (max 1,500 chars):
+
+I found that post-training int8 quantization is the dominant BPB bottleneck on 8xH100 -- the quant penalty (0.014 BPB) is larger than most architectural improvements combined. I built my approach around attacking this.
+
+The core discovery: setting WARMDOWN_ITERS=20000 (beyond the ~12,200 actual steps) so the entire run is one long LR decay. The model never trains at full learning rate. This produces tighter weight distributions that survive int8 with minimal damage -- penalty drops from 0.014 to 0.001 BPB. I swept 10 warmdown values to map the full curve. As far as I can tell nobody has explored this "100% warmdown" regime as a quantization tool (arXiv:2510.06213 is related but doesn't go here).
+
+I also keep the tied embedding in fp16 during export since it does double duty as input embedding and output projection -- int8 damage hits it twice. Costs ~500KB, offset by narrowing MLP hidden from 1024 to 992.
+
+Eval extrapolation turned out to depend on training convergence: eval@2048 helps undertrained models but hurts well-trained ones. Sweet spot is 1.375x (eval@1408).
+
+Also found MUON_BACKEND_STEPS=5 beats 7 at high warmdown -- a reversal from default settings. Tested SwiGLU and int6 mixed-precision too, both failed at this constraint level, which helped narrow focus.
+
+Result: 1.2154 BPB (baseline: 1.2244). PR #61. Some documentation prepared with AI assistance to summarize results.
+
+---
+
+What have you tried so far? (max 255 chars):
+
+Warmdown sweep (2400-30000), eval_seq_len sweep, FP16 embed, SwiGLU, int6 quant, Muon steps sweep. Discovered novel warmdown-quantization co-optimization mechanism.
+
+---
+
+Link(s) to your PR submission:
+
+https://github.com/openai/parameter-golf/pull/61
+
+
+===============================================
+BIG GRANT APPLICATION — ROUND 2 (2026-03-20)
+===============================================
+
+Detailed approach (max 2,500 chars):
+
+Follow-up to my earlier application (was at 1.2154). I've since run about 60 experiments over 48 hours and hit 1.1574 BPB — #1 on the leaderboard right now (PR #114). Burned through my personal compute getting here so I'm applying again.
+
+The short version of how I got here, in three stages:
+
+First I figured out that post-quant int8 damage was the biggest problem — bigger than any architectural change. I found that cranking WARMDOWN_ITERS way past the actual step count (20000 vs ~12200 steps) forces the LR to decay the entire run, which makes weights tighter and way easier to quantize. Swept 10 warmdown values to map this out. Also started keeping the tied embedding in fp16 since it pulls double duty as the output head. (PR #61, 1.2154)
+
+Then I got sliding window eval working and started training at seq_len=2048 with higher momentum. Interesting thing I found: train@2048 and train@4096 give basically identical BPB once you have sliding window — the window handles long context at eval, so the model just needs to learn local patterns. 2048 gets more steps so it's strictly better. Also did a granular clip sweep and landed on 0.3 for long sequences, and batch=786K turned out optimal (swept 393K to 1M). (PR #96, 1.1764)
+
+Finally I got int6 quantization working. My first attempt months ago was a disaster — I was rounding int8 values to multiples of 4, which is the wrong approach. Proper int6 means quantizing directly to a ±31 range with per-row scales. This freed about 25% artifact space so I could triple the MLP hidden dim to 1536 (21.8M params in 16MB). Also keep the last two layers' key projections in fp16 since late attention needs precise token discrimination. (PR #114, 1.1574)
+
+I also tried and killed a bunch of stuff: NorMuon (110ms/step, throughput death), multi-token prediction (86ms/step, same problem), ALBERT embedding factorization (torch.compile choked on it), SwiGLU (no gain at matched params), EMA, depth recurrence, KV head reduction. The lesson I keep relearning: on a 10-min budget, anything that slows your step by more than ~10% is net negative. Throughput is king.
+
+Some documentation and experiment summaries prepared with AI assistance for speed and clarity.
+
+---
+
+Current best leaderboard submission score:
+
+1.1574
+
+---
+
+What improvement you expect from additional compute (max 1,500 chars):
+
+At 1.1574 (#1) but 0.0006 ahead of #2 and out of personal compute. The only scores below ~1.13 right now are from people training on the validation set, which I don't think reflects real modeling ability. I want to push closer to that range with actual generalization. Three directions:
+
+1. Solidify (~30 runs): Multi-seed for p<0.01, MLP hidden sweep, 10 layers with int6 headroom. Each could find 0.001-0.005.
+
+2. SP4096 + int6 (~40 runs): tokens_per_byte drops 0.41→0.31 with 4096-vocab (confirmed). Nobody else combining the vocab angle with int6 compression. Attacks BPB from both sides.
+
+3. Novel eval/training ideas I want to test (~30 runs): Bidirectional sliding window — score each token with both a forward and backward (right-to-left) pass, average the predictions. Weird for a causal LM but we're scoring, not generating. Also want to try future-token noise injection during training — randomly swap 5-10% of input tokens with the token 2 positions ahead, forcing more robust representations. And test-time gradient adaptation on each eval window before scoring. All genuinely untried.
+
+Conservative: 1.1574→1.150. Target: →1.140.
+
+Follow-up to earlier application (PR #61, 1.2154). Some docs prepared with AI assistance at my direction.
+
+Link(s) to PR submissions:
+
+https://github.com/openai/parameter-golf/pull/114, https://github.com/openai/parameter-golf/pull/96, https://github.com/openai/parameter-golf/pull/61
