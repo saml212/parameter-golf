@@ -1,0 +1,67 @@
+## What I Learned Spending 3 Days Trying to Compress a Language Model into 16MB
+
+Three days ago I looked at this problem and thought if someone broke 1.15 BPB, OpenAI should just hire them on the spot. I figured it would take new architectures, new training paradigms, something nobody had thought of. The 4-hour unlimited-compute run hit 1.175. That felt like a ceiling.
+
+I'm at 1.13 now. I don't think getting to 1.10 is possible but if someone does it I'm not going to be surprised. There are 10 days left and techniques that didn't exist 48 hours ago are in the top 5.
+
+### The Hunt for Leverage
+
+The story of LLMs in the last two years is about finding leverage in places nobody was looking. When OpenAI shipped o1 and found they could lever inference-time compute into reasoning capabilities that no amount of pretraining scaling could produce — that was a leverage discovery. The model was the same. The training was the same. They found a different place to push. Post-training scaling, RLHF, chain-of-thought — every leap in this field came from someone ignoring the part of the pipeline everyone else was optimizing and finding a bigger lever somewhere else.
+
+This competition is that dynamic compressed into 72 hours.
+
+I started where everyone starts. Learning rates, gradient clipping, warmdown schedules. Got 0.01 BPB. Then I discovered that the post-training int8 quantization penalty (0.014 BPB) was bigger than all my hyperparameter gains combined. The thing destroying my score wasn't the model — it was the compression step everyone treated as an afterthought. I'd been optimizing the wrong part of the pipeline.
+
+So I attacked quantization. Swept 10 warmdown values and found that decaying the learning rate across the entire training run produces weights that survive int8 rounding with 3x less damage. Wrote it up, submitted [PR #61](https://github.com/openai/parameter-golf/pull/61) at 1.2154.
+
+Then [PR #50](https://github.com/openai/parameter-golf/pull/50) showed up. Stock baseline. Zero training changes. Just sliding window eval. Score: 1.1925. Beat me by a mile. The leverage wasn't in training at all. It was in evaluation. The o1 pattern again — the model doesn't change, you find a different place to push.
+
+### The Mistakes
+
+I burned runs I didn't have to burn.
+
+I tried SwiGLU after [PR #42](https://github.com/openai/parameter-golf/pull/42) had already called it "counterproductive." Same result. I tested NorMuon at 110ms/step when other teams had already shown it was marginal. I ran EMA at two decay rates and got 1.53 and 1.39 — both catastrophic — when 30 seconds of thinking would have told me why (the model is still improving at step 1,600, so averaging pulls in bad early weights). The information was in the PRs or in my own head. I just wasn't paying attention.
+
+The one that hurt most was eval@2048. On 1xH100 it was my biggest win — +0.048 BPB. I was sure it would transfer to 8xH100. It didn't. On a well-trained model the RoPE extrapolation noise cancels the context benefit. Three cluster runs to rediscover something that should have been obvious.
+
+But the int6 story goes the other way. Early on I tried int6 quantization with step=4 rounding at LR=0.06. Catastrophic. I wrote it off. Then I came back with per-row scaling to ±31 and LR=0.02 instead. It became the foundation of [PR #114](https://github.com/openai/parameter-golf/pull/114) at 1.1574. My best result came from a technique I'd already declared dead. I was just doing it wrong.
+
+### Where the Leverage Lives
+
+One rule survived every phase of 130 experiments: step throughput is king. On a 10-minute budget, any technique that slows your per-step time by more than ~10% is a net loss. The only exception was MLP 3x — 77% overhead but 28% more parameters compensated.
+
+The leverage migrates. When everyone optimizes training, it moves to eval. When everyone has sliding window, it moves to compression. When everyone has int6, it moves to architecture.
+
+The current leader has five PRs in 45 hours. Every one a record. 1.17 → 1.12. He started with the same stack as everyone else. Then while the rest of us ground hyperparameters, he went hunting for zero-cost wins. Found a March 2026 paper on XSA — removing self-attention bias. Zero parameters, zero overhead. Partial RoPE — only 25% of head dims get rotary embeddings. Zero cost. Late QAT — fake quantization in just the last 4% of training. Zero cost. Each PR adds one or two things like this and nothing else. That's taste. Same pattern as o1 — don't make the model bigger, find a different place to push.
+
+### The Bottleneck Is Flow
+
+The runs aren't the bottleneck. Each run is 10 minutes. The bottleneck is the space between runs — deciding what to try next based on what you just learned.
+
+You can't parallelize intuition. Batch size interacts with architecture which interacts with quantization which interacts with weight decay. Change one thing and three other "optimal" values shift. Knowing which experiment to run next — that's the part that's more art than science.
+
+And I think that might be why the folks at OpenAI opened this to the public. Hundreds of people — hobbyists, students, engineers, a few actual researchers — and their AI agents, all given one loss function to optimize. The leaderboard is the gradient signal. How fast you can read other people's PRs is the learning rate. The community is the network. Someone finds XSA ([PR #287](https://github.com/openai/parameter-golf/pull/287)), posts it, and within hours five submissions incorporate it. Information flows through this community the way gradients flow through a transformer.
+
+OpenAI gave 500 people a loss function and $1M in compute credits and said optimize. That's not a competition. That's backpropagation on research strategy.
+
+### The Deeper Game
+
+When you constrain what's abundant, you force breakthroughs in what's scarce. Compute is abundant right now (if you're OpenAI). Data is abundant. Model capacity is abundant. What's scarce is efficiency.
+
+Cap the model at 16MB and training at 10 minutes and people start innovating on efficiency because there's nothing else left to try. Int6 quantization with per-row scaling. XSA. Late QAT. These techniques emerged in 72 hours because the constraint demanded them. A 24M parameter model isn't going into production anywhere. But the methods people invent to squeeze performance out of one? Those might. You could fund a research lab for a year to study model efficiency. Or you could give 500 hobbyists some H100 credits and watch them do it in public in a week.
+
+### The Agent
+
+[Issue #140](https://github.com/openai/parameter-golf/issues/140) is the thing I keep coming back to.
+
+Someone built an AI agent that reads every PR, synthesizes the findings, tracks what's been tried and what hasn't. It updates every 10 minutes. It maps idea lineage — who built on whose work, which techniques stack, which ones conflict. A living research document for hundreds of people moving at sprint speed.
+
+When you give people the right constraints — one number to optimize, public PRs, shared compute — and then add an agent that keeps the information flowing, 500 strangers who mostly don't know what they're doing start collaborating faster than any research lab I've seen. The most valuable artifact from this competition probably won't be any architecture. It might be that agent. And it might be the lesson that coordination with a shared loss function gets you further than any individual insight.
+
+Someone trained on the validation set and got 1.01. The organizers patched the rules. But that number tells you the architecture can hit 1.01 if you remove the generalization requirement. The gap between 1.13 and 1.01 isn't model capacity. Someone is going to find a way to close more of it.
+
+I'm not done. There are 10 days left and the leverage table has blank rows.
+
+---
+
+*~130 experiments. ~45 H100-hours. 4 PRs ([#61](https://github.com/openai/parameter-golf/pull/61), [#96](https://github.com/openai/parameter-golf/pull/96), [#114](https://github.com/openai/parameter-golf/pull/114), [#236](https://github.com/openai/parameter-golf/pull/236)). Some documentation prepared with AI assistance. All mistakes are my own.*
