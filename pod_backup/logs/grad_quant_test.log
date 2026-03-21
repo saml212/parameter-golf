@@ -1,0 +1,87 @@
+W0321 06:21:37.355000 419536 torch/distributed/run.py:803] 
+W0321 06:21:37.355000 419536 torch/distributed/run.py:803] *****************************************
+W0321 06:21:37.355000 419536 torch/distributed/run.py:803] Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed. 
+W0321 06:21:37.355000 419536 torch/distributed/run.py:803] *****************************************
+logs/ad9a15dc-54fd-4218-aa1c-8d2200728a42.txt
+val_bpb:enabled tokenizer_kind=sentencepiece tokenizer_path=./data/tokenizers/fineweb_1024_bpe.model
+train_loader:dataset:fineweb10B_sp1024 train_shards:80
+val_loader:shards pattern=./data/datasets/fineweb10B_sp1024/fineweb_val_*.bin tokens:62021632
+model_params:26829913
+world_size:8 grad_accum_steps:1
+sdp_backends:cudnn=False flash=True mem_efficient=False math=False
+attention_mode:gqa num_heads:8 num_kv_heads:4
+tie_embeddings:True embed_lr:0.035 head_lr:0.0 matrix_lr:0.025 scalar_lr:0.025
+train_batch_tokens:524288 train_seq_len:2048 iterations:20000 warmup_steps:20 max_wallclock_seconds:600.000
+seed:1338
+warmup_step:1/20
+warmup_step:2/20
+warmup_step:3/20
+warmup_step:4/20
+warmup_step:5/20
+warmup_step:6/20
+warmup_step:7/20
+warmup_step:8/20
+warmup_step:9/20
+warmup_step:10/20
+warmup_step:11/20
+warmup_step:12/20
+warmup_step:13/20
+warmup_step:14/20
+warmup_step:15/20
+warmup_step:16/20
+warmup_step:17/20
+warmup_step:18/20
+warmup_step:19/20
+warmup_step:20/20
+step:0/20000 val_loss:6.9292 val_bpb:4.1038 train_time:0ms step_avg:0.01ms
+step:1/20000 train_loss:6.9299 train_time:129ms step_avg:128.85ms
+step:2/20000 train_loss:8.5876 train_time:199ms step_avg:99.46ms
+step:3/20000 train_loss:7.7827 train_time:271ms step_avg:90.50ms
+step:4/20000 train_loss:7.3472 train_time:346ms step_avg:86.53ms
+step:5/20000 train_loss:6.8995 train_time:420ms step_avg:83.99ms
+step:6/20000 train_loss:7.7850 train_time:495ms step_avg:82.47ms
+step:7/20000 train_loss:6.9402 train_time:569ms step_avg:81.22ms
+step:8/20000 train_loss:6.7654 train_time:643ms step_avg:80.33ms
+step:9/20000 train_loss:6.5931 train_time:716ms step_avg:79.60ms
+step:10/20000 train_loss:6.3454 train_time:789ms step_avg:78.95ms
+step:200/20000 train_loss:2.7490 train_time:13847ms step_avg:69.23ms
+step:400/20000 train_loss:2.2407 train_time:27621ms step_avg:69.05ms
+step:600/20000 train_loss:2.4494 train_time:41426ms step_avg:69.04ms
+step:800/20000 train_loss:2.2049 train_time:55243ms step_avg:69.05ms
+W0321 06:23:45.682000 419536 torch/distributed/elastic/agent/server/api.py:725] Received 15 death signal, shutting down workers
+W0321 06:23:45.685000 419536 torch/distributed/elastic/multiprocessing/api.py:908] Sending process 419604 closing signal SIGTERM
+W0321 06:23:45.687000 419536 torch/distributed/elastic/multiprocessing/api.py:908] Sending process 419605 closing signal SIGTERM
+W0321 06:23:45.689000 419536 torch/distributed/elastic/multiprocessing/api.py:908] Sending process 419606 closing signal SIGTERM
+W0321 06:23:45.693000 419536 torch/distributed/elastic/multiprocessing/api.py:908] Sending process 419607 closing signal SIGTERM
+W0321 06:23:45.697000 419536 torch/distributed/elastic/multiprocessing/api.py:908] Sending process 419608 closing signal SIGTERM
+W0321 06:23:45.701000 419536 torch/distributed/elastic/multiprocessing/api.py:908] Sending process 419609 closing signal SIGTERM
+W0321 06:23:45.711000 419536 torch/distributed/elastic/multiprocessing/api.py:908] Sending process 419610 closing signal SIGTERM
+W0321 06:23:45.732000 419536 torch/distributed/elastic/multiprocessing/api.py:908] Sending process 419611 closing signal SIGTERM
+Traceback (most recent call last):
+  File "/usr/local/bin/torchrun", line 7, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 357, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 936, in main
+    run(args)
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 927, in run
+    elastic_launch(
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/launcher/api.py", line 156, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/launcher/api.py", line 284, in launch_agent
+    result = agent.run()
+             ^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/elastic/metrics/api.py", line 138, in wrapper
+    result = f(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/elastic/agent/server/api.py", line 717, in run
+    result = self._invoke_run(role)
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/elastic/agent/server/api.py", line 881, in _invoke_run
+    time.sleep(monitor_interval)
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/elastic/multiprocessing/api.py", line 85, in _terminate_process_handler
+    raise SignalException(f"Process {os.getpid()} got signal: {sigval}", sigval=sigval)
+torch.distributed.elastic.multiprocessing.api.SignalException: Process 419536 got signal: 15
