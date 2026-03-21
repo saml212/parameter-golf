@@ -90,7 +90,7 @@ This competition doesn't finish for another 10 days. Techniques that are SOTA ri
 
 There are people training on the validation set and getting 1.01. The organizers have added rules to stop it. But that number tells you something about the gap between 1.13 and what the architecture can do. That gap isn't model capacity. It's something about how we train and evaluate. Someone is going to find a legitimate way to close more of it.
 
-The thing to come out of this experiment that matters most probably won't be any model or technique. It might be [Issue #140](https://github.com/openai/parameter-golf/issues/140). Or it might be the pattern itself — people locked in, collaborating at high velocity, with AI agents helping them avoid each other's mistakes and find leverage in the places nobody has looked yet. That's not a 16MB language model. That's a model for how research could work.
+The thing that matters most here probably isn't any model. It's the cooperation pattern. Clear incentives, one number to optimize, public PRs, and AI agents ([Issue #140](https://github.com/openai/parameter-golf/issues/140)) compressing hundreds of findings into something you can read in 5 minutes. Get those right and 500 strangers start collaborating faster than any research lab I've seen.
 
 I'm not done. There are 10 days left and the leverage table has blank rows.
 
