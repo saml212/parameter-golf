@@ -683,3 +683,36 @@ Packages that could give us an edge:
 #### Eval Budget Ideas (from user, to implement)
 1. **Checkpoint logit ensemble**: Save EMA + raw weights (or EMA + SWA from different phase). At eval, run both, average logits. Constraint: both must fit in 16MB after int6+zstd. Test delta compression ratio first.
 2. **KV cache reuse across sliding windows**: Carry forward KV tensors from previous windows. Later tokens get 50K+ context instead of 2048. FA3 supports seqlen_k > seqlen_q. Bigger lift but untried by anyone.
+
+## 2026-03-23 Evening: Session 5 — Starting from PR #535 (1.1204)
+
+### Orientation
+New target: PR #535 at 1.1204 (LeakyReLU² + Full GPTQ + QAT alignment). No TTT.
+Merged leader: PR #414 at 1.1228. Our #414+XSA-all: 1.1279.
+New pod: 64.247.201.46:16723. Different volume, fresh data download.
+
+### Exp 11: PR #535 Cold Cache Repro (SEED=1337)
+| Metric | Value |
+|--------|-------|
+| Sliding BPB (s64) | 1.1353 |
+| Steps | ~4,800 (cold cache) |
+| ms/step | ~116 |
+| Artifact | 15.77MB |
+
+Cold cache baseline. Torch.compile cache warming.
+
+### Exp 12: PR #535 Warm Cache Repro (SEED=1337)
+| Metric | Value |
+|--------|-------|
+| Sliding BPB (s64) | **1.1301** |
+| Regular BPB | 1.1538 |
+| Steps | 5,214 |
+| ms/step | 115.6 |
+| Artifact | 16.38MB **(OVER BUDGET!)** |
+| GPTQ layers | 66 |
+
+Analysis: 1.1301 vs #535's claimed 1.1204. Gap = 0.0097. Our pod runs at 115ms/step, getting 5,214 steps. #535 presumably runs at ~85ms, getting ~7,000+ steps. This pod is 35% slower than their hardware. The artifact is over 16MB due to code file size (72KB).
+
+**Pod throughput is again the dominant bottleneck.** Despite having the exact same code, we can't match their BPP because we get 1,800 fewer training steps.
+
+### Exp 13: PR #535 + XSA-all (RUNNING)
