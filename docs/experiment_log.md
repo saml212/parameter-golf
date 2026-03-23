@@ -792,5 +792,16 @@ Analysis: PR #569's full stack gives 1.1218 on our pod — extraordinary for 5,8
 
 Key: the pruning actually zeroes 8.7% of weights (not 2% — it seems to prune by magnitude across all int6 weights, zeroing bottom 2% per-tensor). This helps compression but not enough.
 
-### Exp 17: PR #569 + 3% pruning (RUNNING)
-Increasing PRUNE_PCT from 0.02 to 0.03 to get artifact under 16MB.
+### Exp 17: PR #569 + 3% pruning (SEED=1337)
+| Metric | 3% prune | 2% prune | Delta |
+|--------|----------|---------|-------|
+| BPB | **1.1227** | 1.1218 | +0.0009 |
+| Steps | 5,790 | 5,803 | -13 |
+| Artifact | **15.57MB (FITS!)** | 16.22MB (over!) | -0.65MB |
+| Pruned | 8.7% | 8.7% | same? |
+
+3% pruning fits under 16MB and still beats #414 (1.1228) by 0.0001!
+Pruning % seems similar — checking if PRUNE_PCT is actually being used differently.
+
+### Exp 18: PR #569 + 3% pruning warmer cache (RUNNING)
+Same as Exp 17. Expecting faster steps → more steps → lower BPP.
