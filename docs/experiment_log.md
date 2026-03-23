@@ -732,5 +732,27 @@ Key observations:
 3. Compile cache warmed further — 107ms vs 116ms = 8% faster, 400 more steps.
 4. GPTQ calibration took only 2.9s. Zero step overhead.
 
-### Exp 14: #535 + XSA-all Warmer Cache (RUNNING)
-Same config, 4th run on this pod. Expecting further cache warming → faster steps → more steps → better BPP.
+### Exp 14: #535 + XSA-all Warmer Cache (SEED=1337) — NEW RECORD
+| Metric | Value |
+|--------|-------|
+| **Sliding BPB (s64)** | **1.1225** |
+| Regular BPP | 1.1463 |
+| Steps | 5,850 |
+| ms/step | 102.5 |
+| Artifact | **15.60MB** |
+| GPTQ layers | 66 |
+
+**BEATS MERGED LEADER (#414 at 1.1228) by 0.0003!!!**
+
+Cache warming progression on this pod:
+| Run | ms/step | Steps | BPB |
+|-----|---------|-------|-----|
+| Cold cache | 116 | ~4,800 | 1.1353 |
+| Warm 1 | 115 | 5,214 | 1.1301 |
+| Warm 2 (XSA-all) | 107 | 5,616 | 1.1237 |
+| **Warm 3 (XSA-all)** | **102.5** | **5,850** | **1.1225** |
+
+torch.compile cache needs 3-4 runs to fully optimize. Each warmup saves ~5ms/step → ~250 more steps → ~0.003 BPP.
+
+### 3-Seed Validation (IN PROGRESS)
+Seed 1338 running now. Need 1338 + 1339 to confirm.
