@@ -585,5 +585,34 @@ XSA-all is a real improvement: 3-seed mean 1.1279 vs baseline 1.1286 = -0.0007 B
 But the gain is modest and our pod's step throughput (101ms vs 82ms) remains the dominant limitation.
 All 3 seeds well under 16MB limit.
 
-### Exp 9: Gated Attention + XSA-all (RUNNING)
-Config: XSA_LAST_N=11 + GATED_ATTENTION=1. Per-head sigmoid gate after SDPA. 45,056 gate params (11 layers × 512dim × 8heads).
+### Exp 9: Gated Attention + XSA-all (SEED=1337)
+| Metric | GA+XSA-all | XSA-all only | Delta |
+|--------|------------|-------------|-------|
+| Sliding BPB (s64) | **1.1279** | **1.1268** | **+0.0011 (WORSE)** |
+| ms/step | 104.1 | 101.4 | +2.7 |
+| Steps | ~5,760 | 5,915 | -155 |
+
+Analysis: Gated attention is NET NEGATIVE when combined with XSA-all. The 3% step overhead costs ~155 steps, which more than offsets any per-step quality gain. The sigmoid gates scale attention output by 0-1 per head, which may conflict with XSA's subtraction of self-value projection.
+
+### Updated Summary: All Architecture Experiments on #414 Stack
+| Technique | Delta BPP vs baseline | ms/step | Verdict |
+|-----------|----------------------|---------|---------|
+| **XSA-all (11L)** | **-0.0007** (3-seed) | 101.4 | **KEEP** |
+| Gated Attn + XSA-all | +0.0011 vs XSA-all | 104.1 | DROP |
+| Catalytic Residuals | -0.0001 | 98.6 | DROP |
+| VRL | +0.0012 | 100.3 | DROP |
+| Backout Connection | +0.0005 | 98.5 | DROP |
+| Stride=32 | -0.0001 | same | DROP |
+
+**The #414 stack is extremely well-optimized. Architecture tweaks barely move the needle. The dominant limitation is step throughput — our pod at 98-104ms/step vs their 82ms.**
+
+### Key Realizations
+1. Our pod is ~20% slower than #414's. This alone explains the gap (1.1279 vs 1.1233).
+2. XSA-all is the only improvement that works, and it's modest (-0.0007).
+3. The path to beating #414 is NOT more architecture tweaks. It's either:
+   a. Faster step throughput (hardware, kernel optimizations)
+   b. Quantization improvements (Hadamard rotation, zero step cost)
+   c. Legal TTT (post-training, uses idle eval budget)
+
+### Next: Move to Phase 3 — Quantization improvements
+Try Hadamard rotation before GPTQ-lite. This is purely post-training and costs zero steps.
