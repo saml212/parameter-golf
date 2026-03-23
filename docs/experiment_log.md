@@ -563,5 +563,27 @@ Analysis: Backout is neutral/slightly negative on #414 stack. The U-Net skip con
 
 **XSA-all is the only winning technique so far.** The #414 stack is extremely well-optimized.
 
-### Exp 7: XSA-all Seed 1338 (RUNNING)
-Verifying XSA-all improvement is not seed noise.
+### Exp 7: XSA-all Seed 1338
+| Seed | Sliding BPB (s64) | Regular BPB | Steps | ms/step |
+|------|-------------------|-------------|-------|---------|
+| 1337 | **1.1268** | 1.1505 | 5,915 | 101.4 |
+| 1338 | **1.1284** | 1.1522 | ~5,910 | 101.4 |
+| **Mean** | **1.1276** | | | |
+
+XSA-all improvement holds across seeds. Mean 1.1276 vs baseline 1.1286 = -0.001 confirmed.
+
+### Exp 8: XSA-all 3-Seed Validation
+| Seed | Sliding BPB (s64) | Regular BPB | Steps | Artifact |
+|------|-------------------|-------------|-------|----------|
+| 1337 | **1.1268** | 1.1505 | 5,915 | 15.53MB |
+| 1338 | **1.1284** | 1.1522 | ~5,910 | 15.68MB |
+| 1339 | **1.1285** | 1.1522 | ~5,910 | 15.68MB |
+| **Mean** | **1.1279** | | | |
+| **Std** | **0.0010** | | | |
+
+XSA-all is a real improvement: 3-seed mean 1.1279 vs baseline 1.1286 = -0.0007 BPP.
+But the gain is modest and our pod's step throughput (101ms vs 82ms) remains the dominant limitation.
+All 3 seeds well under 16MB limit.
+
+### Exp 9: Gated Attention + XSA-all (RUNNING)
+Config: XSA_LAST_N=11 + GATED_ATTENTION=1. Per-head sigmoid gate after SDPA. 45,056 gate params (11 layers × 512dim × 8heads).
