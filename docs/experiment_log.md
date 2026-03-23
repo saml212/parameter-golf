@@ -818,4 +818,14 @@ Prebuilt wheel for CUDA 12.8 + PyTorch 2.9.1. 30 seconds to install. This was th
 FA3 gives ~12% more steps = ~0.002 BPP for free. This was the ENTIRE throughput gap.
 Still cold cache — warm should be ~85ms → ~7,000 steps → match #569's claimed 1.1175.
 
-### Exp 19: PR #569 + FA3 warm cache (RUNNING)
+### Exp 19: PR #569 + FA3 warm cache (SEED=1337) — 1.1182 but 67KB over!
+| Metric | Value |
+|--------|-------|
+| BPB | **1.1182** |
+| Steps | 6,482 |
+| ms/step | 92.5 |
+| Artifact | **16.07MB (over by 67KB!)** |
+
+Essentially matches PR #569's 1.1175. The 67KB overshoot is from slightly worse compression on the warmer-cache model. Need to increase prune_pct.
+
+### Exp 20: PR #569 + FA3 + 4% prune (RUNNING)
