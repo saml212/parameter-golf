@@ -614,5 +614,24 @@ Analysis: Gated attention is NET NEGATIVE when combined with XSA-all. The 3% ste
    b. Quantization improvements (Hadamard rotation, zero step cost)
    c. Legal TTT (post-training, uses idle eval budget)
 
-### Next: Move to Phase 3 — Quantization improvements
-Try Hadamard rotation before GPTQ-lite. This is purely post-training and costs zero steps.
+### Exp 10: Hadamard Rotation + GPTQ-lite + XSA-all (SEED=1337)
+| Metric | Hadamard+XSA-all | XSA-all only | Delta |
+|--------|-----------------|-------------|-------|
+| Sliding BPB (s64) | **1.1266** | **1.1268** | **-0.0002 (marginal)** |
+| Regular BPB | 1.1504 | 1.1505 | -0.0001 |
+| Artifact model | 15.96MB | 15.46MB | **+0.50MB (LARGER!)** |
+| Artifact total | 16.03MB | 15.53MB | **+0.50MB, OVER BUDGET** |
+| Rotated matrices | 55 | 0 | |
+
+Analysis: Hadamard rotation gives marginal quant error reduction (-0.0002 BPP) but makes the model 0.5MB LARGER. The rotation distributes weights more uniformly, which reduces int6 quantization error BUT also reduces zstd compressibility. In this competition where artifact size is the binding constraint, Hadamard is a net NEGATIVE — it trades 0.0002 BPP for 0.5MB of artifact budget.
+
+The rotation made the compressed model go from 15.46MB to 15.96MB while only improving BPP by 0.0002. Not worth it. Hadamard would only help if we were nowhere near the 16MB limit.
+
+### Current Standing
+Best result: **XSA-all 3-seed mean 1.1279** (std 0.0010). Artifact fits under 16MB.
+Gap to #414 (1.1233): 0.0046. Entirely explainable by step throughput (5,900 vs 7,100 steps).
+
+### Remaining Lever: Step Throughput
+The Turbo-Muon research found a Triton implementation (flash-newton-schulz on GitHub) that could give 5-10% faster NS orthogonalization. Nobody in the competition has tried it. If it gets us from 101ms to 91ms/step, that's ~6,600 steps → should close ~half the gap.
+
+Alternatively: legal score-first TTT could add ~0.002 BPP on top of our 1.1279, giving ~1.126.
