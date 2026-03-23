@@ -779,5 +779,18 @@ Options to fit:
 3. Combine both
 4. Use int5 for some layers (saves space at cost of quant quality)
 
-### Exp 16: PR #569 Repro (RUNNING)
-PR #569 at 1.1175: VRL with sigmoid gates + LeakyReLU² + Full GPTQ + QAT alignment + 2% magnitude pruning. XSA-all(11). No backout.
+### Exp 16: PR #569 Repro (SEED=1337) — 1.1218 but over budget
+| Metric | Value |
+|--------|-------|
+| BPB (roundtrip sliding) | **1.1218** |
+| Steps | 5,803 |
+| ms/step | ~103 |
+| Artifact | **16.22MB (over by 223KB!)** |
+| Pruned weights | 8.7% (2302K/26.3M) |
+
+Analysis: PR #569's full stack gives 1.1218 on our pod — extraordinary for 5,803 steps. The VRL with sigmoid gates + pruning + GPTQ all contribute. But artifact is 0.22MB over budget.
+
+Key: the pruning actually zeroes 8.7% of weights (not 2% — it seems to prune by magnitude across all int6 weights, zeroing bottom 2% per-tensor). This helps compression but not enough.
+
+### Exp 17: PR #569 + 3% pruning (RUNNING)
+Increasing PRUNE_PCT from 0.02 to 0.03 to get artifact under 16MB.
