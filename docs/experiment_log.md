@@ -803,5 +803,19 @@ Key: the pruning actually zeroes 8.7% of weights (not 2% — it seems to prune b
 3% pruning fits under 16MB and still beats #414 (1.1228) by 0.0001!
 Pruning % seems similar — checking if PRUNE_PCT is actually being used differently.
 
-### Exp 18: PR #569 + 3% pruning warmer cache (RUNNING)
-Same as Exp 17. Expecting faster steps → more steps → lower BPP.
+### FA3 HOPPER INSTALLED!
+`pip install flash_attn_3 --find-links https://windreamer.github.io/flash-attention3-wheels/cu128_torch291`
+Prebuilt wheel for CUDA 12.8 + PyTorch 2.9.1. 30 seconds to install. This was the missing piece.
+
+### Exp 18: PR #569 + 3% prune + FA3 Cold Cache (SEED=1337)
+| Metric | FA3 | FA2 (Exp 17) | Delta |
+|--------|-----|-------------|-------|
+| BPB | **1.1205** | 1.1227 | **-0.0022** |
+| Steps | 6,231 | 5,790 | +441 |
+| ms/step | ~93 (cold) | 103 | **-10** |
+| Artifact | 15.85MB | 15.57MB | +0.28MB |
+
+FA3 gives ~12% more steps = ~0.002 BPP for free. This was the ENTIRE throughput gap.
+Still cold cache — warm should be ~85ms → ~7,000 steps → match #569's claimed 1.1175.
+
+### Exp 19: PR #569 + FA3 warm cache (RUNNING)
