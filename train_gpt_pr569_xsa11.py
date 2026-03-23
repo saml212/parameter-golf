@@ -938,11 +938,22 @@ def main():
         if stop_after_step is None and reached_cap: stop_after_step = step
     log0(f"peak memory allocated: {torch.cuda.max_memory_allocated()//1024//1024} MiB reserved: {torch.cuda.max_memory_reserved()//1024//1024} MiB")
 
-    # Apply EMA weights
+    # Apply EMA weights — save raw state for delta measurement
     log0("ema:applying EMA weights")
     current_state = base_model.state_dict()
+    raw_state_cpu = {k: v.detach().cpu().clone() for k, v in current_state.items()}
     avg_state = {name: t.to(dtype=current_state[name].dtype) for name, t in ema_state.items()}
     base_model.load_state_dict(avg_state, strict=True)
+    # Measure delta between EMA and raw weights (for checkpoint ensemble feasibility)
+    if rank == 0:
+        import zstandard as _zstd
+        delta = {k: (avg_state[k].cpu().float() - raw_state_cpu[k].float()) for k in raw_state_cpu}
+        delta_buf = io.BytesIO(); torch.save(delta, delta_buf)
+        delta_raw = delta_buf.getvalue()
+        delta_compressed = _zstd.ZstdCompressor(level=22).compress(delta_raw)
+        log0(f"DELTA_MEASUREMENT: raw={len(delta_raw)/(1024*1024):.2f}MB compressed={len(delta_compressed)/(1024*1024):.2f}MB")
+        del delta, delta_buf, delta_raw, delta_compressed
+    del raw_state_cpu
 
     # v41: GPTQ calibration — collect Hessians AFTER applying EMA weights
     log0(f"gptq:calibrating with {args.gptq_calib_batches} batches...")
@@ -1053,6 +1064,15 @@ def main():
     torch.cuda.synchronize(); eval_time = time.perf_counter() - t_eval
     log0(f"final_int6_zstd_roundtrip val_loss:{q_vl:.4f} val_bpb:{q_vb:.4f} eval_time:{eval_time*1000:.0f}ms")
     log0(f"final_int6_zstd_roundtrip_exact val_loss:{q_vl:.8f} val_bpb:{q_vb:.8f}")
+    # Temperature sweep: test multiple T values
+    for t_val in [0.96, 0.97, 0.98, 0.99, 1.0]:
+        if abs(t_val - args.eval_temperature) < 0.001:
+            log0(f"T={t_val:.2f} val_bpb:{q_vb:.8f} (already computed)")
+            continue
+        t_vl, t_vb = eval_val_sliding(raw_logits_fn, rank, world_size, device,
+            val_tokens_eval, base_bytes_lut, has_leading_space_lut, is_boundary_token_lut,
+            eval_sl, args.eval_stride, eval_batch_seqs=args.eval_batch_seqs, temperature=t_val)
+        log0(f"T={t_val:.2f} val_bpb:{t_vb:.8f}")
     if distributed: dist.destroy_process_group()
 
 if __name__ == "__main__":
