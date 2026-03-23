@@ -1,0 +1,41 @@
+COMPUTE CREDIT REQUEST — Parameter Golf Challenge
+==================================================
+
+DETAILED APPROACH (max 2,500 characters):
+
+We have submitted 4 PRs (#61, #96, #114, #332) across 135+ logged experiments, improving from 1.2154 to 1.1321 val_bpb. Currently 3rd on the leaderboard. Each submission introduced a distinct finding:
+
+PR #61 (1.2154): Discovered warmdown-quantization co-optimization — weight decay during warmdown produces weights that quantize better under int8.
+
+PR #96 (1.1764): Proved train@2048 matches train@4096 when using sliding window evaluation, and that GRAD_CLIP_NORM=0.3 is optimal for long-sequence training.
+
+PR #114 (1.1574): Showed proper per-row int6 quantization (±31 range) works where naive step=4 rounding fails catastrophically. Combined with MLP 3x expansion to fit 21.8M params in 16MB.
+
+PR #332 (1.1321): Introduced gradient-guided adaptive quantization — measuring per-tensor gradient sensitivity during warmdown and allocating int5/int6/int7 precision accordingly. This funds a 12th transformer layer within the 16MB budget. Also contributed a negative finding: Late QAT (STE fake-quantization in the last 4% of training) is counterproductive at 12 layers because the throughput cost exceeds the quantization improvement.
+
+Our approach centers on finding outsized returns outside the training loop. Key discoveries:
+- Batch=524K beats 786K: 22% more optimization steps outweigh larger batch quality in fixed-time training
+- Gradient-guided quantization: allocate precision where it matters, not uniformly
+- Systematic mapping of the weight-decay/artifact-size tradeoff curve
+
+Next experiments require compute for:
+1. Checkpoint ensemble at eval time — save EMA + final weights, run sliding eval on both, average logits. We have 390 seconds of idle eval budget that nobody in the competition is using.
+2. Bit-packed sub-byte quantization — pack int6 values as actual 6-bit integers instead of in 8-bit containers. 25% better compression could fund a 13th layer.
+3. Exploring the depth/width Pareto frontier at 12-14 layers with adaptive compression.
+
+All experiments are logged with full reproducibility (3 seeds, p < 0.01).
+
+
+WHAT IMPROVEMENT YOU EXPECT FROM ADDITIONAL COMPUTE (max 1,500 characters):
+
+Our trajectory: 1.2154 → 1.1764 → 1.1574 → 1.1321. Each session yielded 0.02-0.04 BPP improvement through systematic experimentation.
+
+We have three specific directions with estimated impact:
+
+1. Checkpoint ensemble eval (0.002-0.005 BPP): We use 210s of our 600s eval budget. Running two model variants and averaging logits would use the remaining 390s. This is a novel eval technique — no existing submission does this.
+
+2. Sub-byte bit-packing (0.003-0.005 BPP): Our gradient-guided quant already allocates int5/int6/int7 per-tensor. Packing these as true 5/6/7-bit values instead of 8-bit containers saves 20-30% on compression, potentially funding a 13th layer or wider MLP.
+
+3. Depth frontier exploration (0.002-0.004 BPP): We proved 12L/1408 beats 11L/1536. The optimal depth/width ratio at this scale is underexplored. Testing 13L/1280 and 14L/1152 with adaptive compression requires multiple full training runs.
+
+Combined expected improvement: 0.005-0.010 BPP, targeting val_bpb below 1.125. Each direction requires 3-5 runs at 3 seeds each (45-75 runs total, ~8 hours on 8xH100).
