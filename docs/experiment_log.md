@@ -667,3 +667,19 @@ ssh root@213.181.105.211 -p 19866 -i ~/.ssh/id_ed25519
 4. **BigramHash(8192)** — 4x more buckets than our 2048. Easy config change.
 5. **Checkpoint logit ensemble** — save EMA + raw weights, average logits at eval. Novel, nobody does it.
 6. **Legal TTT** — ~0.002 BPP. Last resort but proven on #414 stack.
+
+#### Package Research Results (from sub-agent)
+Packages that could give us an edge:
+
+| Package | Expected Gain | Install Time | Notes |
+|---------|--------------|-------------|-------|
+| **liger-kernel** | 5-20% throughput | <1 min | Fused RMSNorm, CrossEntropy, RoPE, SwiGLU. UNTESTED in competition. |
+| **CUDA Graphs** | 1-5% throughput | 0 (built-in) | `torch.compile(mode="reduce-overhead")`. May already be active. |
+| **APEX FusedAdam** | 2-3% (AdamW only) | 5-10 min | Fused optimizer for scalar/embed params. |
+| **FA3 Hopper** | ~8ms/step max | 3+ hours build | Not worth build time. FA2 is already 0.73ms/call. |
+
+**Highest-EV new package: liger-kernel.** Fused Triton kernels for RMSNorm, CrossEntropy, RoPE, SwiGLU. Up to 20% throughput and 60% less memory. `pip install liger-kernel` — instant install. Nobody in the competition uses it. Could be the throughput edge we need.
+
+#### Eval Budget Ideas (from user, to implement)
+1. **Checkpoint logit ensemble**: Save EMA + raw weights (or EMA + SWA from different phase). At eval, run both, average logits. Constraint: both must fit in 16MB after int6+zstd. Test delta compression ratio first.
+2. **KV cache reuse across sliding windows**: Carry forward KV tensors from previous windows. Later tokens get 50K+ context instead of 2048. FA3 supports seqlen_k > seqlen_q. Bigger lift but untried by anyone.
