@@ -122,11 +122,16 @@ Add one at a time, measure each independently:
 - Batch=1M (too few steps)
 
 ## Key Interaction Effects
+- WD=20000 helps with high LR (0.06) but hurts with low LR (0.02)
+- MUON_BACKEND_STEPS=5 beats 7 at WD=20000 but 7 beats 5 at WD=2400
+- GRAD_CLIP matters more for long sequences than short sequences
 - EMA needs XSA to work (EMA alone hurts on non-XSA base)
 - SmearGate needs OrthoInit (hurts by 0.003 without it)
 - Late QAT works at 11L but hurts at 12L (step budget dependent)
 - Value Residual + Gated Attention stack additively (-0.017 combined, PR #413)
 - GPTQ-lite and Hadamard rotation attack quant error from different angles — may stack
+- **VRL conflicts with ValueEmbedding (VE128)** — both inject identity info into deep layers; VRL net negative on #414 stack (+0.0012 BPP)
+- **Stride=32 gives negligible gain over stride=64** at seq2048 (0.0001 BPP, not worth 2x eval time)
 
 ## Key Insight: Step Throughput Is King
 On a 10-min budget, per-step overhead >10% is a net loss. Only MLP 3x has ever compensated.

@@ -413,3 +413,98 @@ Mean matches original PR #114 result exactly (1.1574). Environment reproduces fa
 - Depth recurrence (abandoned by all teams)
 - EMA weights
 - eval@2048 on 8xH100 (hurts well-trained models)
+
+## 2026-03-22 Evening: Session 4 Orientation
+
+### Current Valid Leaderboard (non-TTT, as of ~midnight)
+| PR | BPB | Author | Key Stack |
+|----|-----|--------|-----------|
+| #478 | 1.1268 | gowtham0992 | 11L + **XSA on ALL 11 layers** + GPTQ-lite + EMA + Late QAT (NEW!) |
+| #414 | 1.1233 | signalrush | 11L + GPTQ-lite + EMA + Tight SWA + QAT@0.15 + U-Net skips |
+| #473 | 1.1219 | abaybektursun | #414 stack + legal score-first TTT (-0.002 gain) |
+| #394 | 1.1247 | greqone | #315 + Backout connection |
+| #315 | 1.1250 | jfprincz | 11L + Partial RoPE + LN Scale + XSA4 + EMA |
+| **#332** | **1.1320** | **us** | 12L + GradQuant + Partial RoPE + XSA4 + EMA |
+
+Note: PR #478 claims 1.12676 (3-seed) but uses XSA on ALL layers vs #414's XSA-last-4. This is a potentially easy diff to test.
+Note: PRs #442 (1.1027), #462 (1.0672), #481 (1.0970) use pre-eval TTT — INVALID per Issue #402.
+
+### Techniques in #414 That We Don't Have
+1. **GPTQ-lite** — 5 clip percentiles per row, pick min MSE. Zero training cost.
+2. **U-Net skip connections** — encoder-decoder skips across layers
+3. **Tight SWA + EMA combined** — not EMA replacing SWA, both together
+4. **Late QAT@0.15** — only works at 11L (we had 12L)
+5. **Warmdown=3500** (we used 3000)
+6. **11L not 12L** — more steps, enables Late QAT
+
+### New Techniques Discovered Since Our Last Session
+1. **XSA on ALL layers** (PR #478) — claims 1.1268 vs #414's 1.1233 XSA-last-4. Simple change.
+2. **Value Residual Learning** (PR #413) — -0.015 BPP in ablation. 18 params. arXiv:2410.17897
+3. **Catalytic Residuals** (PR #450) — -0.024 BPP in ablation. ~11K params.
+4. **Gated Attention** (PR #413) — -0.003 BPP. ~37K params. Stacks with VRL.
+5. **Backout Connection** (PR #339) — -0.003 BPP. 1 param.
+6. **Cosine TTT + per-layer LR** (PR #481) — 3× multiplier on TTT gain. Highest-EV untried combo for legal TTT.
+7. **Turbo-Muon** (arXiv:2512.04632) — preconditioned NS, 5-10% faster steps.
+8. **PR #474** attempted stacking VRL+Catalytic+GatedAttn+BigramHash(10240)+12L but only got 1.1690 — suggests these techniques need careful integration on SOTA base, not a from-scratch 12L build.
+
+### Top 3 Highest-EV Experiments
+1. **Start from PR #414 code, reproduce 1.1233** — this is our new baseline. We have the script (train_gpt_pr414.py, 1402 lines).
+2. **Add Value Residual Learning to #414 stack** — -0.015 in ablation, 18 params, zero compute cost. Biggest single-technique potential gain.
+3. **Try XSA on ALL layers (PR #478's approach)** — trivial diff from #414, claims meaningful gain. Quick A/B test.
+
+### Scripts Downloaded
+- `train_gpt_pr414.py` — PR #414's exact script (1402 lines, current valid leader at 1.1233)
+- `train_gpt_pr478.py` — PR #478's script (881 lines, XSA-all, claims 1.1268)
+- `train_gpt_pr474.py` — PR #474's script (1443 lines, VRL + Catalytic + GatedAttn + BigramHash(10240))
+
+### Pod Status
+Pod is live at 213.181.105.210:19050. 8xH100 SXM confirmed. torch 2.9.1+cu128, flash-attn 2.8.3.
+
+### Exp 1: PR #414 Cold Cache Repro (SEED=1337)
+| Metric | Value |
+|--------|-------|
+| Regular BPB | 1.1601 |
+| **Sliding BPB (s64)** | **1.1363** |
+| Steps | 5,017 |
+| ms/step | 119.6 |
+| Artifact (int6+zstd) | 16.4MB (OVER BUDGET) |
+| EMA post-quant BPB | 1.1519 (pre-quant) |
+
+Analysis: Cold cache kills us — 119ms/step vs ~82ms warm. Only 5,017 steps vs 7,100+ expected. BPB 1.1363 vs their 1.1233 = 0.013 gap, entirely explained by step count. Artifact is 16.4MB > 16MB limit — the code file (67KB) pushes it over. Need to trim code or adjust compression.
+
+### Exp 2: PR #414 Warm Cache + Stride=32 (SEED=1337)
+| Metric | Value |
+|--------|-------|
+| Sliding BPB (s32) | **1.1285** |
+| Sliding BPB (s64) | **1.1286** |
+| Regular BPB | 1.1524 |
+| Pre-quant EMA BPB | 1.1448 |
+| Steps | 5,903 |
+| ms/step | 101.6 |
+| Artifact (int6+zstd) | 15.98MB (fits!) |
+| Eval time s32 | 162s |
+| Eval time s64 | 81s |
+
+Analysis: Stride=32 gives NEGLIGIBLE gain over stride=64 (0.0001 BPB). At seq_len=2048 + stride=64, tokens already get 1984 context. Not worth the 2x eval cost.
+
+Our pod runs at ~98-102ms/step vs PR #414's claimed ~82ms. This 20% speed penalty means ~5,900 steps vs their 7,100. This explains our 1.1286 vs their 1.1233 — the gap is entirely from step count.
+
+Key finding: stride improvement is dead at seq2048. Focus on architecture/training gains.
+
+### Exp 3: VRL on #414 Stack (SEED=1337)
+| Metric | VRL | Baseline (Exp 2) | Delta |
+|--------|-----|-----------------|-------|
+| Sliding BPB (s64) | **1.1298** | **1.1286** | **+0.0012 (WORSE)** |
+| Regular BPB | 1.1534 | 1.1524 | +0.0010 |
+| Pre-quant EMA | 1.1456 | 1.1448 | +0.0008 |
+| Steps | 5,977 | 5,903 | +74 |
+| ms/step | 100.3 | 98.3 | +2.0 |
+| Artifact | 15.95MB | 15.98MB | -0.03MB |
+
+Analysis: VRL is NET NEGATIVE on the #414 stack (-0.0012 BPP). The deeper 11L model with U-Net skips + VE128 already distributes value information effectively across layers. VRL's mixing of layer-0 V may actually be conflicting with the ValueEmbedding (VE128) that already injects token identity at layers 9,10. The 2% throughput cost also doesn't help.
+
+This matches the pattern from PR #413 where the ablation was on a 9L base without VE — the gain shrinks with depth and existing value-distribution mechanisms.
+
+Key interaction effect: VRL conflicts with ValueEmbedding (VE128). Both try to inject identity info into deep layers, but VE does it more efficiently (only target layers, learned projections).
+
+Next: Try Catalytic Residuals instead — targets a different mechanism (residual scaling) that shouldn't conflict with VE.
