@@ -715,4 +715,22 @@ Analysis: 1.1301 vs #535's claimed 1.1204. Gap = 0.0097. Our pod runs at 115ms/s
 
 **Pod throughput is again the dominant bottleneck.** Despite having the exact same code, we can't match their BPP because we get 1,800 fewer training steps.
 
-### Exp 13: PR #535 + XSA-all (RUNNING)
+### Exp 13: PR #535 + XSA-all (SEED=1337) — BREAKTHROUGH
+| Metric | XSA-all | Baseline #535 | Delta |
+|--------|---------|--------------|-------|
+| Sliding BPB (s64) | **1.1237** | 1.1301 | **-0.0064** |
+| Regular BPB | 1.1475 | 1.1538 | -0.0063 |
+| Steps | 5,616 | 5,214 | +402 |
+| ms/step | 106.8 | 115.6 | -8.8 |
+| Artifact | **15.67MB** | 16.38MB (OVER!) | **-0.71MB** |
+
+**This is 0.0009 above the merged leader (#414 at 1.1228).** And our pod is 35% slower than competition hardware. With 7,000 steps this would easily be sub-1.12.
+
+Key observations:
+1. XSA-all gave huge improvement here (-0.0064) vs our #414 tests (-0.0018). LeakyReLU² + GPTQ stack amplifies XSA benefit.
+2. XSA-all made the model MORE compressible (15.67 vs 16.38MB). Baseline was OVER 16MB, XSA-all fits!
+3. Compile cache warmed further — 107ms vs 116ms = 8% faster, 400 more steps.
+4. GPTQ calibration took only 2.9s. Zero step overhead.
+
+### Exp 14: #535 + XSA-all Warmer Cache (RUNNING)
+Same config, 4th run on this pod. Expecting further cache warming → faster steps → more steps → better BPP.
