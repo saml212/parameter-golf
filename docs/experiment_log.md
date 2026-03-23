@@ -819,6 +819,25 @@ FA3 gives ~12% more steps = ~0.002 BPP for free. This was the ENTIRE throughput 
 Still cold cache — warm should be ~85ms → ~7,000 steps → match #569's claimed 1.1175.
 
 ### Exp 19: PR #569 + FA3 warm cache (SEED=1337) — 1.1182 but 67KB over!
+NOTE: this used our patched script with FA2 fallback, not original #569 code.
+
+### Exp 22: #569 (original) + T=0.98 + FA3 cold (SEED=1337)
+| BPB | Steps | ms/step | Artifact |
+|-----|-------|---------|----------|
+| 1.1303 | 4,903 | 122 (cold) | 15.87MB |
+
+Cold cache with new script. Step times will improve with warming.
+
+### Exp 23: #569 + T=0.98 + FA3 warm (SEED=1337) — 1.1213!
+| BPP | Steps | ms/step | Artifact |
+|-----|-------|---------|----------|
+| **1.1213** | 6,147 | 97.5 | **16.14MB (OVER by 143KB)** |
+
+Temperature scaling T=0.98 gives -0.0014 BPP vs T=1.0.
+Step time drifted up from 91 to 97ms during training.
+Artifact over budget by 143KB — 3% prune isn't enough for this weight distribution.
+
+### Exp 24: #569 + T=0.98 + 5% prune + FA3 (RUNNING)
 | Metric | Value |
 |--------|-------|
 | BPB | **1.1182** |
