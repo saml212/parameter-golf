@@ -635,3 +635,35 @@ Gap to #414 (1.1233): 0.0046. Entirely explainable by step throughput (5,900 vs 
 The Turbo-Muon research found a Triton implementation (flash-newton-schulz on GitHub) that could give 5-10% faster NS orthogonalization. Nobody in the competition has tried it. If it gets us from 101ms to 91ms/step, that's ~6,600 steps → should close ~half the gap.
 
 Alternatively: legal score-first TTT could add ~0.002 BPP on top of our 1.1279, giving ~1.126.
+
+### 2026-03-23: Session 4b — New Pod, FA3 Investigation
+
+#### Critical Finding: FA2 vs FA3 is NOT the bottleneck
+Benchmarked on new pod (213.181.105.211:19866):
+- FA2 flash_attn_func: **0.73ms** per attention call
+- cuDNN SDPA: **13.52ms** (18x slower — NOT an option)
+- Flash SDPA: **0.77ms**
+
+With 11 layers × 2 passes = 22 attention calls per step, attention accounts for ~16ms of a 98ms step. Even if FA3 halves attention time, we save ~8ms → 90ms. The full 16ms gap to PR #414 (82ms) is NOT fully explained by attention.
+
+**The gap likely comes from:**
+1. Hardware variation between RunPod pods (clock speed, interconnect bandwidth)
+2. torch.compile optimization differences (PR #414 may have run more warmup)
+3. DDP synchronization overhead differences
+
+FA3 Hopper build was attempted but requires compiling 134+ CUDA files (hdim64-only subset from 451 total). Serial compilation takes 3+ hours. Build was killed after 30 min. Not worth the pod cost.
+
+#### Warm cache step times on new pod
+- Cold cache: ~118-122ms/step
+- Warm cache: ~101ms/step (similar to old pod)
+
+#### New Pod Connection (for reference)
+ssh root@213.181.105.211 -p 19866 -i ~/.ssh/id_ed25519
+
+#### Next Session Priorities (Updated)
+1. **Don't chase FA3** — attention is only ~16% of step time. The ROI doesn't justify 3+ hours of build time.
+2. **Focus on what PR #505 does differently** — SwiGLU+Star-ReLU MLP=1792, BigramHash(8192). Download their code and test.
+3. **Full GPTQ** (PR #508) — -0.0027 BPP from Hessian-aware quantization. Zero step cost. Implement.
+4. **BigramHash(8192)** — 4x more buckets than our 2048. Easy config change.
+5. **Checkpoint logit ensemble** — save EMA + raw weights, average logits at eval. Novel, nobody does it.
+6. **Legal TTT** — ~0.002 BPP. Last resort but proven on #414 stack.
