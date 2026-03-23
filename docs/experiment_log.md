@@ -508,3 +508,60 @@ This matches the pattern from PR #413 where the ablation was on a 9L base withou
 Key interaction effect: VRL conflicts with ValueEmbedding (VE128). Both try to inject identity info into deep layers, but VE does it more efficiently (only target layers, learned projections).
 
 Next: Try Catalytic Residuals instead — targets a different mechanism (residual scaling) that shouldn't conflict with VE.
+
+### Exp 4: Catalytic Residuals on #414 Stack (SEED=1337)
+| Metric | Catalytic | Baseline (Exp 2) | Delta |
+|--------|-----------|-----------------|-------|
+| Sliding BPB (s64) | **1.1285** | **1.1286** | **-0.0001 (noise)** |
+| Regular BPB | 1.1521 | 1.1524 | -0.0003 |
+| Steps | 6,082 | 5,903 | +179 |
+| ms/step | 98.6 | 98.3 | +0.3 |
+| Artifact | 16.00MB | 15.98MB | +0.02MB |
+
+Analysis: Catalytic is NEUTRAL on #414 stack. The -0.024 BPP ablation (PR #450) was on a 9L base without attn_scale/mlp_scale. The #414 stack already has per-dimension attn_scale + mlp_scale + resid_mix — adding catalytic is redundant.
+
+Pattern emerging: techniques that showed large ablation gains on simple bases (VRL -0.015, Catalytic -0.024) give little/no benefit on the highly-optimized #414 stack. The existing mechanisms (VE128, attn_scale, mlp_scale, U-Net skips) already capture what VRL and catalytic try to add.
+
+### Exp 5: XSA on ALL 11 Layers (SEED=1337)
+| Metric | XSA-all | Baseline (Exp 2) | Delta |
+|--------|---------|-----------------|-------|
+| Sliding BPB (s64) | **1.1268** | **1.1286** | **-0.0018 (BETTER!)** |
+| Regular BPB | 1.1505 | 1.1524 | -0.0019 |
+| Pre-quant EMA | 1.1429 | 1.1448 | -0.0019 |
+| Steps | 5,915 | 5,903 | +12 |
+| ms/step | 101.4 | 98.3 | +3.1 |
+| Artifact | 15.53MB | 15.98MB | -0.45MB |
+| Peak memory | 22,047 MiB | 20,670 MiB | +1,377 MiB |
+
+Analysis: XSA on ALL 11 layers is a CLEAR WIN: -0.0018 BPP. Despite 3% slower step time (101.4 vs 98.3ms), the per-step quality improvement more than compensates. The artifact is 0.45MB SMALLER too (XSA regularizes attention, leading to more compressible weights).
+
+This matches PR #478 exactly (they got 1.12676, we got 1.12676). XSA removes the self-projection component from attention, forcing the model to attend to OTHER positions. Applying this to early layers forces better cross-position information mixing from the start.
+
+**XSA-all is our first improvement over baseline. Keeping.**
+
+Next: Test XSA-all + Backout (running now). If both help independently, try combining.
+
+### Exp 6: Backout Connection on #414 Stack (SEED=1337)
+| Metric | Backout | Baseline (Exp 2) | Delta |
+|--------|---------|-----------------|-------|
+| Sliding BPB (s64) | **1.1291** | **1.1286** | **+0.0005 (slightly worse)** |
+| Regular BPB | 1.1528 | 1.1524 | +0.0004 |
+| Steps | 6,083 | 5,903 | +180 |
+| ms/step | 98.5 | 98.3 | +0.2 |
+| Artifact | 15.61MB | 15.98MB | -0.37MB |
+
+Analysis: Backout is neutral/slightly negative on #414 stack. The U-Net skip connections already provide cross-layer information flow. Backout's subtraction of mid-layer hidden state may conflict with or duplicate what the skip connections do.
+
+### Summary of Phase 2 Results on #414 Stack
+| Technique | Delta BPP | Verdict | Why |
+|-----------|-----------|---------|-----|
+| **XSA-all (11L)** | **-0.0018** | **KEEP** | Better cross-position mixing from layer 0 |
+| Stride=32 | -0.0001 | DROP | Negligible at seq2048 |
+| Catalytic Residuals | -0.0001 | DROP | Redundant with attn_scale/mlp_scale |
+| VRL | +0.0012 | DROP | Conflicts with ValueEmbedding |
+| Backout Connection | +0.0005 | DROP | Redundant with U-Net skips |
+
+**XSA-all is the only winning technique so far.** The #414 stack is extremely well-optimized.
+
+### Exp 7: XSA-all Seed 1338 (RUNNING)
+Verifying XSA-all improvement is not seed noise.
