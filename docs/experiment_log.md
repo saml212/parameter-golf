@@ -754,5 +754,30 @@ Cache warming progression on this pod:
 
 torch.compile cache needs 3-4 runs to fully optimize. Each warmup saves ~5ms/step → ~250 more steps → ~0.003 BPP.
 
-### 3-Seed Validation (IN PROGRESS)
-Seed 1338 running now. Need 1338 + 1339 to confirm.
+### Seed 1338 Result
+| Seed | Sliding BPB | Steps | ms/step | Artifact |
+|------|-------------|-------|---------|----------|
+| 1337 | **1.1225** | 5,850 | 102.5 | 15.60MB |
+| 1338 | **1.1234** | 5,922 | 101.3 | TBD |
+
+Both seeds beat merged leader. Cache still warming (5922 > 5850 steps).
+
+### Exp 15: BigramHash(8192) + XSA-all on #535 (SEED=1337)
+| Metric | BG(8192) | BG(2048) XSA-all | Delta |
+|--------|----------|-----------------|-------|
+| Sliding BPB (s64) | **1.1200** | 1.1225 | **-0.0025** |
+| Regular BPB | 1.1437 | 1.1463 | -0.0026 |
+| Steps | 5,908 | 5,850 | +58 |
+| ms/step | 101.3 | 102.5 | -1.2 |
+| Artifact | **16.37MB (OVER!)** | 15.60MB | +0.77MB |
+
+Analysis: BigramHash(8192) gives massive -0.0025 BPP improvement but blows the artifact budget by 0.37MB. The extra 786K bigram params (8192×128 vs 2048×128) add ~0.77MB even after int6+zstd.
+
+Options to fit:
+1. BigramHash(4096) — half the overhead, might still give most of the gain
+2. Add 2% magnitude pruning (PR #569's technique) — frees ~0.2-0.3MB
+3. Combine both
+4. Use int5 for some layers (saves space at cost of quant quality)
+
+### Exp 16: PR #569 Repro (RUNNING)
+PR #569 at 1.1175: VRL with sigmoid gates + LeakyReLU² + Full GPTQ + QAT alignment + 2% magnitude pruning. XSA-all(11). No backout.
