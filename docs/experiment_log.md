@@ -853,7 +853,30 @@ Artifact over budget by 143KB — 3% prune isn't enough for this weight distribu
 
 Stack: #569 (VRL + LeakyReLU² + Full GPTQ + QAT align) + XSA-all(11) + FA3 + T=0.98 + 5% prune.
 
-### Exp 25: Same config, warmer cache (RUNNING)
+### Exp 25-26: Warmer cache + measurement runs
+
+Exp 25 (warmer cache): 1.1182 BPP but 16.21MB over budget (6586 steps, 91ms).
+The pattern: more steps → better BPP but LARGER compressed model. Need pruning.
+
+### Exp 27: Delta Measurement + Temperature Sweep
+**DELTA MEASUREMENT**: EMA-vs-raw delta is **88.24MB compressed**. Checkpoint logit ensemble via delta is COMPLETELY INFEASIBLE. Weights diverge too much.
+
+**TEMPERATURE SWEEP**:
+| T | BPP |
+|---|-----|
+| 0.96 | 1.1195 |
+| 0.97 | 1.1191 |
+| 0.98 | 1.1185 |
+| 0.99 | 1.1181 |
+| **1.00** | **1.1180** |
+
+T=1.0 (no scaling) is OPTIMAL. Temperature scaling HURTS this model. The GPTQ + EMA + SWA combination produces well-calibrated logits. Temperature scaling only helps post-TTT (which introduces overconfidence).
+
+**NEW DEAD END: Temperature scaling on non-TTT models. Checkpoint logit ensemble via delta storage.**
+
+This run: **1.1180 BPP at 15.75MB, T=1.0, 5% prune.** Steps: ~6,500 at ~91ms.
+
+### Exp 28: T=1.0 clean run (RUNNING)
 | Metric | Value |
 |--------|-------|
 | BPB | **1.1182** |
