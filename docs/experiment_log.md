@@ -837,7 +837,23 @@ Temperature scaling T=0.98 gives -0.0014 BPP vs T=1.0.
 Step time drifted up from 91 to 97ms during training.
 Artifact over budget by 143KB — 3% prune isn't enough for this weight distribution.
 
-### Exp 24: #569 + T=0.98 + 5% prune + FA3 (RUNNING)
+### Exp 24: #569 + T=0.98 + 5% prune + FA3 warm (SEED=1337) — BEST SUBMITTABLE
+| Metric | Value |
+|--------|-------|
+| **BPP** | **1.1202** |
+| Steps | 6,485 |
+| ms/step | ~93 |
+| **Artifact** | **15.55MB (FITS!)** |
+| Temperature | T=0.98 |
+| Pruning | 8.8% (threshold=0) |
+
+**Beats merged leader #414 (1.1228) by 0.0026.**
+**Beats unmerged #535 (1.1204) by 0.0002.**
+15.55MB well under 16MB limit.
+
+Stack: #569 (VRL + LeakyReLU² + Full GPTQ + QAT align) + XSA-all(11) + FA3 + T=0.98 + 5% prune.
+
+### Exp 25: Same config, warmer cache (RUNNING)
 | Metric | Value |
 |--------|-------|
 | BPB | **1.1182** |
