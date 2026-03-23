@@ -828,4 +828,24 @@ Still cold cache — warm should be ~85ms → ~7,000 steps → match #569's clai
 
 Essentially matches PR #569's 1.1175. The 67KB overshoot is from slightly worse compression on the warmer-cache model. Need to increase prune_pct.
 
-### Exp 20: PR #569 + FA3 + 4% prune (RUNNING)
+### Exp 20: PR #569 + FA3 + 4% prune (SEED=1337)
+| BPB | Steps | ms/step | Artifact |
+|-----|-------|---------|----------|
+| 1.1180 | 6,545 | 91.6 | 16.27MB (OVER) |
+
+Still over budget. The pruning doesn't help enough — model compresses to ~16.2MB regardless.
+
+### Exp 21: #535 + XSA-all + FA3 (SEED=1337) — MAJOR RECORD
+| Metric | Value |
+|--------|-------|
+| **Sliding BPB** | **1.1188** |
+| Regular BPB | 1.1425 |
+| Steps | 6,647 |
+| ms/step | 89.3 |
+| **Artifact** | **15.62MB (FITS!)** |
+
+**BEATS merged leader by 0.0040. BEATS unmerged #535 by 0.0016.**
+FA3 at 89ms/step gives us ~6,650 steps — close to competition standard.
+#535 + XSA-all is the winning combination. Artifact fits comfortably.
+
+3-seed validation in progress (seed 1338 running).
