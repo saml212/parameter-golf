@@ -876,7 +876,20 @@ T=1.0 (no scaling) is OPTIMAL. Temperature scaling HURTS this model. The GPTQ + 
 
 This run: **1.1180 BPP at 15.75MB, T=1.0, 5% prune.** Steps: ~6,500 at ~91ms.
 
-### Exp 28: T=1.0 clean run (RUNNING)
+### Exp 28-30: T=1.0 runs
+| Exp | Seed | BPP | Artifact | Notes |
+|-----|------|-----|----------|-------|
+| 28 | 1337 | **1.1178** | 16.05MB (over) | T=1.0 confirmed best |
+| 29 | 1337 | **1.1180** | 15.75MB | With measurement code (larger code) |
+| 30 | 42 | **1.1209** | 16.24MB (over) | Clean script |
+
+**KEY FINDING**: The #569 model consistently produces 16.0-16.2MB compressed artifacts. VRL adds parameters and changes weight distributions, making compression worse. The #569 code can't reliably fit under 16MB on our pod.
+
+### Decision: Submit with #535+XSA-all Stack
+The #535 base + XSA-all(11) + FA3 gave **1.1188 at 15.62MB** (Exp 21). This reliably fits under 16MB. Starting 3-seed validation.
+
+### 3-Seed Validation of #535+XSA-all+FA3 (IN PROGRESS)
+Seed 1337 running.
 | Metric | Value |
 |--------|-------|
 | BPB | **1.1182** |
