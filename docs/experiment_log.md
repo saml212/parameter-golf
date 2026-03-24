@@ -977,6 +977,22 @@ BPP: **1.1205**, Artifact: 16.13MB. Even baseline is now over due to torch.compi
 
 Gap between threshold=0 and threshold=1 is the fundamental issue: int6 values are discrete (0, ±1, ±2...), so there's no smooth pruning continuum. Selective ±1 pruning sorts by reconstruction error (scale²) and prunes least-impactful first.
 
+### NEW NON-TTT RECORD: 1.1154 BPP (Exp 34)
+| Metric | Value |
+|--------|-------|
+| **Sliding BPP** | **1.1154** |
+| Regular BPP | 1.1389 |
+| Steps | 6,923 |
+| ms/step | ~87 |
+| **Artifact** | **15.94MB (FITS!)** |
+| Selective prune | Not needed (already fit) |
+
+Stack: PR #593 base (Parallel Muon + Full GPTQ + LeakyReLU²) + **XSA-all(11)** + selective ±1 pruning.
+**BEATS #593 (1.1171) by 0.0017. BEATS merged #414 (1.1228) by 0.0074.**
+XSA-all is the novel contribution. Cold cache — warm should be even better.
+
+Pod: 154.57.34.103:49033. Parallel Muon gives 83-87ms/step.
+
 ### Key Realization: Artifact Size Is Non-Deterministic
 Model compressed size fluctuates 15.5-16.2MB between runs depending on:
 1. torch.compile cache state (affects training dynamics)
