@@ -888,8 +888,21 @@ This run: **1.1180 BPP at 15.75MB, T=1.0, 5% prune.** Steps: ~6,500 at ~91ms.
 ### Decision: Submit with #535+XSA-all Stack
 The #535 base + XSA-all(11) + FA3 gave **1.1188 at 15.62MB** (Exp 21). This reliably fits under 16MB. Starting 3-seed validation.
 
-### 3-Seed Validation of #535+XSA-all+FA3 (IN PROGRESS)
-Seed 1337 running.
+### 3-Seed Validation of #535+XSA-all+FA3 — COMPLETE
+| Seed | Sliding BPB | Artifact | Steps |
+|------|-------------|----------|-------|
+| 1337 | 1.1188 | 15.76MB | 6,528 |
+| 1338 | 1.1194 | 15.60MB | 6,691 |
+| 1339 | 1.1191 | 15.60MB | 6,707 |
+| **Mean** | **1.1191** | | |
+| **Std** | **0.0003** | | |
+
+All seeds under 16MB. All train under 600s.
+Improvement over #414 (1.1228): **0.0037 nats**.
+**PROBLEM: Need 0.005 nats for record. We're 0.0013 short.**
+
+To beat the 0.005 threshold we need mean BPB ≤ 1.1178. We're at 1.1191.
+The #569 runs consistently hit 1.118x but don't fit under 16MB.
 | Metric | Value |
 |--------|-------|
 | BPB | **1.1182** |
