@@ -1006,6 +1006,18 @@ Pod: 154.57.34.103:49033. Parallel Muon gives 83-87ms/step.
 All seeds under 16MB. All train under 600s. No TTT.
 Script: train_gpt_novel.py (PR #593 base + XSA-all + selective ±1 pruning).
 
+### Entropy Coding Analysis
+| Compressor | Size | vs Entropy |
+|-----------|------|-----------|
+| **Shannon entropy** | **15.04MB** | **theoretical minimum** |
+| **lzma** | **15.09MB** | **99.7% optimal** |
+| zstd-22 | 15.99MB | 94% optimal |
+| zlib-9 | 16.27MB | 92% optimal |
+
+lzma is already within 50KB of the Shannon limit. ANS/Huffman CANNOT help.
+Weight distribution: 255 unique int8 values, entropy 4.70 bits/symbol.
+This is why PR #593 uses lzma instead of zstd — it's 0.9MB better.
+
 ### Key Realization: Artifact Size Is Non-Deterministic
 Model compressed size fluctuates 15.5-16.2MB between runs depending on:
 1. torch.compile cache state (affects training dynamics)
