@@ -1422,6 +1422,24 @@ def main() -> None:
     gptq_hessians = gptq_calibrate(base_model, args.train_files, device, n_samples=256, seq_len=args.train_seq_len)
     log0(f"gptq:calibrated {len(gptq_hessians)} layers in {time.perf_counter()-t_gptq:.1f}s")
     quant_result, quant_meta = mixed_quantize_int6(sd_cpu, {"mlp", "attn"}, gptq_hessians)
+    # Post-quant magnitude pruning: zero smallest int6 values for better zstd compression
+    prune_pct = float(os.environ.get("PRUNE_PCT", "0.10"))  # 10%: zeros + some ±1 values
+    if prune_pct > 0:
+        all_q_abs = []
+        q_keys = [n + ".q" for n, info in quant_meta.items() if isinstance(info, dict) and info.get("type") == "int6" and n + ".q" in quant_result]
+        for qk in q_keys:
+            all_q_abs.append(quant_result[qk].flatten().abs().float())
+        if all_q_abs:
+            all_vals = torch.cat(all_q_abs)
+            k = max(1, int(prune_pct * all_vals.numel()))
+            threshold = float(all_vals.kthvalue(k).values.item())
+            pruned = 0
+            for qk in q_keys:
+                mask = quant_result[qk].abs().float() <= threshold
+                pruned += mask.sum().item()
+                quant_result[qk][mask] = 0
+            total_q = sum(quant_result[qk].numel() for qk in q_keys)
+            log0(f"prune:{prune_pct*100:.0f}% zeroed {pruned}/{total_q} ({100*pruned/max(total_q,1):.1f}%) threshold={threshold}")
     quant_buf = io.BytesIO()
     torch.save({"w": quant_result, "m": quant_meta}, quant_buf)
     quant_raw = quant_buf.getvalue()
