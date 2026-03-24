@@ -993,6 +993,19 @@ XSA-all is the novel contribution. Cold cache — warm should be even better.
 
 Pod: 154.57.34.103:49033. Parallel Muon gives 83-87ms/step.
 
+### 3-SEED VALIDATION: RECORD CONFIRMED
+| Seed | Sliding BPP | Artifact | Steps |
+|------|-------------|----------|-------|
+| 1337 | **1.1154** | 15.94MB | 6,923 |
+| 1338 | **1.1150** | 15.95MB | 6,917 |
+| 1339 | **1.1160** | 15.94MB | 6,914 |
+| **Mean** | **1.1155** | | |
+| **Std** | **0.0005** | | |
+
+**Beats merged leader #414 (1.1228) by 0.0073 nats. MEETS 0.005 RECORD THRESHOLD.**
+All seeds under 16MB. All train under 600s. No TTT.
+Script: train_gpt_novel.py (PR #593 base + XSA-all + selective ±1 pruning).
+
 ### Key Realization: Artifact Size Is Non-Deterministic
 Model compressed size fluctuates 15.5-16.2MB between runs depending on:
 1. torch.compile cache state (affects training dynamics)
