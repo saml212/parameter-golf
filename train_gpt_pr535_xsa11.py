@@ -997,7 +997,8 @@ def quantize_int6_per_row(t: Tensor, clip_range: int = 31) -> tuple[Tensor, Tens
     q = torch.clamp(torch.round(t32 / scale.float()), -clip_range, clip_range).to(torch.int8)
     return q, scale
 def mixed_quantize_int6(state_dict: dict[str, Tensor], int6_cats: set[str],
-                        hessians: dict[str, Tensor] | None = None):
+                        hessians: dict[str, Tensor] | None = None,
+                        int5_mlp: bool = False):
     num_layers_total = max(
         (int(k.split(".")[1]) for k in state_dict if k.startswith("blocks.")),
         default=0,
@@ -1018,18 +1019,22 @@ def mixed_quantize_int6(state_dict: dict[str, Tensor], int6_cats: set[str],
             meta[name] = "passthrough_ctrl"
             continue
         if cat in int6_cats and t.ndim >= 1:
+            # Int5 for MLP layers if enabled (clip_range=15 vs 31)
+            is_mlp = ".mlp." in name or cat == "mlp"
+            clip_range = 15 if (int5_mlp and is_mlp) else 31
             # Try GPTQ if Hessian available for this layer
             module_name = name.rsplit(".weight", 1)[0] if name.endswith(".weight") else name
             H = hessians.get(module_name) if hessians else None
             if H is not None and t.ndim == 2:
-                q, s = gptq_quantize_weight(t, H.cpu())
+                q, s = gptq_quantize_weight(t, H.cpu(), clip_range=clip_range)
                 gptq_count += 1
             else:
-                q, s = quantize_int6_per_row(t)
+                q, s = quantize_int6_per_row(t, clip_range=clip_range)
                 naive_count += 1
             result[name + ".q"] = q
             result[name + ".scale"] = s
-            meta[name] = {"type": "int6"}
+            qtype = "int5" if clip_range == 15 else "int6"
+            meta[name] = {"type": qtype}
         else:
             q, s = quantize_float_tensor(t)
             result[name + ".q"] = q
@@ -1421,25 +1426,64 @@ def main() -> None:
     t_gptq = time.perf_counter()
     gptq_hessians = gptq_calibrate(base_model, args.train_files, device, n_samples=256, seq_len=args.train_seq_len)
     log0(f"gptq:calibrated {len(gptq_hessians)} layers in {time.perf_counter()-t_gptq:.1f}s")
-    quant_result, quant_meta = mixed_quantize_int6(sd_cpu, {"mlp", "attn"}, gptq_hessians)
-    # Post-quant magnitude pruning: zero smallest int6 values for better zstd compression
-    prune_pct = float(os.environ.get("PRUNE_PCT", "0.10"))  # 10%: zeros + some ±1 values
-    if prune_pct > 0:
-        all_q_abs = []
-        q_keys = [n + ".q" for n, info in quant_meta.items() if isinstance(info, dict) and info.get("type") == "int6" and n + ".q" in quant_result]
-        for qk in q_keys:
-            all_q_abs.append(quant_result[qk].flatten().abs().float())
-        if all_q_abs:
-            all_vals = torch.cat(all_q_abs)
-            k = max(1, int(prune_pct * all_vals.numel()))
-            threshold = float(all_vals.kthvalue(k).values.item())
-            pruned = 0
-            for qk in q_keys:
-                mask = quant_result[qk].abs().float() <= threshold
-                pruned += mask.sum().item()
-                quant_result[qk][mask] = 0
-            total_q = sum(quant_result[qk].numel() for qk in q_keys)
-            log0(f"prune:{prune_pct*100:.0f}% zeroed {pruned}/{total_q} ({100*pruned/max(total_q,1):.1f}%) threshold={threshold}")
+    int5_mlp = bool(int(os.environ.get("INT5_MLP", "0")))
+    quant_result, quant_meta = mixed_quantize_int6(sd_cpu, {"mlp", "attn"}, gptq_hessians, int5_mlp=int5_mlp)
+    if int5_mlp: log0("int5_mlp:enabled — MLP weights quantized to int5 (clip_range=15)")
+    # Selective ±1 pruning: prune ±1 values sorted by reconstruction error (scale²)
+    # For each ±1 value, error = scale². Prune those with smallest scale first.
+    selective_prune = bool(int(os.environ.get("SELECTIVE_PRUNE", "1")))
+    target_mb = float(os.environ.get("TARGET_MB", "15.9"))
+    if selective_prune:
+        code_bytes = len(code.encode("utf-8"))
+        # Collect all ±1 positions with their reconstruction error (scale²)
+        ones_info = []  # (tensor_key, flat_idx, error)
+        for name, info in quant_meta.items():
+            if not (isinstance(info, dict) and info.get("type") == "int6"): continue
+            qk, sk = name + ".q", name + ".scale"
+            if qk not in quant_result or sk not in quant_result: continue
+            q, s = quant_result[qk], quant_result[sk]
+            if s.ndim > 0:  # per-row scale
+                abs_q = q.abs()
+                ones_mask = (abs_q == 1)
+                if ones_mask.any():
+                    row_indices = torch.arange(q.shape[0]).unsqueeze(1).expand_as(q)[ones_mask]
+                    flat_indices = torch.arange(q.numel()).reshape(q.shape)[ones_mask]
+                    errors = s.float()[row_indices].pow(2)
+                    for fi, err in zip(flat_indices.tolist(), errors.tolist()):
+                        ones_info.append((qk, fi, err))
+        if ones_info:
+            # Sort by error ascending (prune least-impactful first)
+            ones_info.sort(key=lambda x: x[2])
+            # Binary search: prune enough ±1 values to fit target
+            def try_prune(n_prune):
+                tmp = {k: v.clone() for k, v in quant_result.items()}
+                for i in range(min(n_prune, len(ones_info))):
+                    qk, fi, _ = ones_info[i]
+                    tmp[qk].view(-1)[fi] = 0
+                buf = io.BytesIO()
+                torch.save({"w": tmp, "m": quant_meta}, buf)
+                blob = zstandard.ZstdCompressor(level=22).compress(buf.getvalue())
+                return len(blob) + code_bytes, tmp
+            # Try full prune first
+            full_size, _ = try_prune(len(ones_info))
+            no_prune_size, _ = try_prune(0)
+            log0(f"selective_prune: {len(ones_info)} ±1 candidates. no_prune={no_prune_size/(1024*1024):.2f}MB full_prune={full_size/(1024*1024):.2f}MB")
+            target_bytes = int(target_mb * 1024 * 1024)
+            if no_prune_size <= target_bytes:
+                log0(f"selective_prune: no pruning needed, already fits")
+            elif full_size > target_bytes:
+                log0(f"selective_prune: even full ±1 prune not enough, applying all")
+                _, quant_result = try_prune(len(ones_info))
+            else:
+                # Binary search for minimum pruning
+                lo, hi = 0, len(ones_info)
+                while lo < hi:
+                    mid = (lo + hi) // 2
+                    sz, _ = try_prune(mid)
+                    if sz <= target_bytes: hi = mid
+                    else: lo = mid + 1
+                log0(f"selective_prune: pruning {lo}/{len(ones_info)} ±1 values ({100*lo/len(ones_info):.1f}%)")
+                _, quant_result = try_prune(lo)
     quant_buf = io.BytesIO()
     torch.save({"w": quant_result, "m": quant_meta}, quant_buf)
     quant_raw = quant_buf.getvalue()
