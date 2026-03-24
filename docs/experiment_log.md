@@ -933,3 +933,27 @@ FA3 at 89ms/step gives us ~6,650 steps — close to competition standard.
 #535 + XSA-all is the winning combination. Artifact fits comfortably.
 
 3-seed validation in progress (seed 1338 running).
+
+### 3-Seed Validation Results (#535+XSA-all+FA3)
+| Seed | BPB | Artifact | Steps |
+|------|-----|----------|-------|
+| 1337 | 1.1188 | 15.76MB | 6,528 |
+| 1338 | 1.1194 | 15.60MB | 6,691 |
+| 1339 | 1.1191 | 15.60MB | 6,707 |
+| **Mean** | **1.1191** | | |
+| **Std** | **0.0003** | | |
+
+Beats #414 by 0.0037. Need 0.005 for record — 0.0013 short.
+
+### Novel Technique Measurement Results
+All three proposed eval-time techniques are DEAD:
+
+| Technique | Measurement | Verdict |
+|-----------|------------|---------|
+| Checkpoint ensemble | Delta = 16.2MB compressed | DEAD |
+| Temperature scaling | T=1.0 optimal, no gain | DEAD |
+| Extended context (4096) | 1.57 BPP catastrophe | DEAD |
+
+### Next: BigramHash(4096) + TrigramHash
+BigramHash(4096) running now. TrigramHash prepped (zero extra params, reuses bigram table).
+These are the last untested knobs that could close the 0.0013 gap.
