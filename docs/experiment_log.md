@@ -957,3 +957,19 @@ All three proposed eval-time techniques are DEAD:
 ### Next: BigramHash(4096) + TrigramHash
 BigramHash(4096) running now. TrigramHash prepped (zero extra params, reuses bigram table).
 These are the last untested knobs that could close the 0.0013 gap.
+
+### Exp 31: BigramHash(4096) — OVER BUDGET
+BPP: 1.1285, Artifact: 16.52MB. Extra bigram params push over limit. Cold cache.
+
+### Exp 32: TrigramHash — OVER BUDGET
+BPP: 1.1237, Artifact: 16.13MB. Zero extra params but changes weight distribution → worse compression. Also cold cache hurt BPP.
+
+### Exp 33: Baseline #535+XSA-all Best — OVER BUDGET AGAIN
+BPP: **1.1205**, Artifact: 16.13MB. Even baseline is now over due to torch.compile cache state differences. The 3-seed validation (15.6MB) was with a different compile cache.
+
+### Key Realization: Artifact Size Is Non-Deterministic
+Model compressed size fluctuates 15.5-16.2MB between runs depending on:
+1. torch.compile cache state (affects training dynamics)
+2. Number of training steps (more steps = different weights = different compression)
+3. Random seed
+Our 3-seed validation at 15.6MB was a lucky set of runs. Reproducibility is not guaranteed.
