@@ -967,6 +967,16 @@ BPP: 1.1237, Artifact: 16.13MB. Zero extra params but changes weight distributio
 ### Exp 33: Baseline #535+XSA-all Best — OVER BUDGET AGAIN
 BPP: **1.1205**, Artifact: 16.13MB. Even baseline is now over due to torch.compile cache state differences. The 3-seed validation (15.6MB) was with a different compile cache.
 
+### Pruning Analysis
+| Prune % | Threshold | % Zeroed | Artifact | BPP | Notes |
+|---------|-----------|----------|----------|-----|-------|
+| 0% | — | 8.6% (natural zeros) | 16.0-16.2MB | 1.1188-1.1205 | Sometimes fits, sometimes over |
+| 2-8% | 0 | 8.6% | same as 0% | same | Only prunes exact zeros |
+| 9-23% | 1.0 | 22-24% | 14.7-14.8MB | 1.1341-1.1344 | Prunes ALL ±1 values, too aggressive |
+| **Selective** | by error | variable | **target** | **minimal loss** | **IMPLEMENTED, not tested (pod died)** |
+
+Gap between threshold=0 and threshold=1 is the fundamental issue: int6 values are discrete (0, ±1, ±2...), so there's no smooth pruning continuum. Selective ±1 pruning sorts by reconstruction error (scale²) and prunes least-impactful first.
+
 ### Key Realization: Artifact Size Is Non-Deterministic
 Model compressed size fluctuates 15.5-16.2MB between runs depending on:
 1. torch.compile cache state (affects training dynamics)
